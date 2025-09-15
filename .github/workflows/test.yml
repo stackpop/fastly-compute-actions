@@ -11,17 +11,17 @@ jobs:
       matrix:
         # from: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners
         include:
-        - os: ubuntu-24.04
-        - os: ubuntu-22.04
-        - os: macos-15
-        - os: macos-14
-        - os: windows-2025
-        - os: windows-2022
+          - os: ubuntu-24.04
+          - os: ubuntu-22.04
+          - os: macos-15
+          - os: macos-14
+          - os: windows-2025
+          - os: windows-2022
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-    - name: Set up Fastly CLI
-      uses: ./setup
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Fastly CLI
+        uses: ./setup
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
