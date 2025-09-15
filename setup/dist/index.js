@@ -16631,6 +16631,14 @@ const { isUint8Array, isArrayBuffer } = __nccwpck_require__(8253)
 const { File: UndiciFile } = __nccwpck_require__(3041)
 const { parseMIMEType, serializeAMimeType } = __nccwpck_require__(4322)
 
+let random
+try {
+  const crypto = __nccwpck_require__(7598)
+  random = (max) => crypto.randomInt(0, max)
+} catch {
+  random = (max) => Math.floor(Math.random(max))
+}
+
 let ReadableStream = globalThis.ReadableStream
 
 /** @type {globalThis['File']} */
@@ -16716,7 +16724,7 @@ function extractBody (object, keepalive = false) {
     // Set source to a copy of the bytes held by object.
     source = new Uint8Array(object.buffer.slice(object.byteOffset, object.byteOffset + object.byteLength))
   } else if (util.isFormDataLike(object)) {
-    const boundary = `----formdata-undici-0${`${Math.floor(Math.random() * 1e11)}`.padStart(11, '0')}`
+    const boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
     const prefix = `--${boundary}\r\nContent-Disposition: form-data`
 
     /*! formdata-polyfill. MIT License. Jimmy Wärting <https://jimmy.warting.se/opensource> */
@@ -30935,6 +30943,14 @@ module.exports = require("net");
 
 /***/ }),
 
+/***/ 7598:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:crypto");
+
+/***/ }),
+
 /***/ 8474:
 /***/ ((module) => {
 
@@ -32704,6 +32720,184 @@ module.exports = parseParams
 
 /***/ }),
 
+/***/ 1120:
+/***/ ((module) => {
+
+"use strict";
+var __webpack_unused_export__;
+
+
+const NullObject = function NullObject () { }
+NullObject.prototype = Object.create(null)
+
+/**
+ * RegExp to match *( ";" parameter ) in RFC 7231 sec 3.1.1.1
+ *
+ * parameter     = token "=" ( token / quoted-string )
+ * token         = 1*tchar
+ * tchar         = "!" / "#" / "$" / "%" / "&" / "'" / "*"
+ *               / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+ *               / DIGIT / ALPHA
+ *               ; any VCHAR, except delimiters
+ * quoted-string = DQUOTE *( qdtext / quoted-pair ) DQUOTE
+ * qdtext        = HTAB / SP / %x21 / %x23-5B / %x5D-7E / obs-text
+ * obs-text      = %x80-FF
+ * quoted-pair   = "\" ( HTAB / SP / VCHAR / obs-text )
+ */
+const paramRE = /; *([!#$%&'*+.^\w`|~-]+)=("(?:[\v\u0020\u0021\u0023-\u005b\u005d-\u007e\u0080-\u00ff]|\\[\v\u0020-\u00ff])*"|[!#$%&'*+.^\w`|~-]+) */gu
+
+/**
+ * RegExp to match quoted-pair in RFC 7230 sec 3.2.6
+ *
+ * quoted-pair = "\" ( HTAB / SP / VCHAR / obs-text )
+ * obs-text    = %x80-FF
+ */
+const quotedPairRE = /\\([\v\u0020-\u00ff])/gu
+
+/**
+ * RegExp to match type in RFC 7231 sec 3.1.1.1
+ *
+ * media-type = type "/" subtype
+ * type       = token
+ * subtype    = token
+ */
+const mediaTypeRE = /^[!#$%&'*+.^\w|~-]+\/[!#$%&'*+.^\w|~-]+$/u
+
+// default ContentType to prevent repeated object creation
+const defaultContentType = { type: '', parameters: new NullObject() }
+Object.freeze(defaultContentType.parameters)
+Object.freeze(defaultContentType)
+
+/**
+ * Parse media type to object.
+ *
+ * @param {string|object} header
+ * @return {Object}
+ * @public
+ */
+
+function parse (header) {
+  if (typeof header !== 'string') {
+    throw new TypeError('argument header is required and must be a string')
+  }
+
+  let index = header.indexOf(';')
+  const type = index !== -1
+    ? header.slice(0, index).trim()
+    : header.trim()
+
+  if (mediaTypeRE.test(type) === false) {
+    throw new TypeError('invalid media type')
+  }
+
+  const result = {
+    type: type.toLowerCase(),
+    parameters: new NullObject()
+  }
+
+  // parse parameters
+  if (index === -1) {
+    return result
+  }
+
+  let key
+  let match
+  let value
+
+  paramRE.lastIndex = index
+
+  while ((match = paramRE.exec(header))) {
+    if (match.index !== index) {
+      throw new TypeError('invalid parameter format')
+    }
+
+    index += match[0].length
+    key = match[1].toLowerCase()
+    value = match[2]
+
+    if (value[0] === '"') {
+      // remove quotes and escapes
+      value = value
+        .slice(1, value.length - 1)
+
+      quotedPairRE.test(value) && (value = value.replace(quotedPairRE, '$1'))
+    }
+
+    result.parameters[key] = value
+  }
+
+  if (index !== header.length) {
+    throw new TypeError('invalid parameter format')
+  }
+
+  return result
+}
+
+function safeParse (header) {
+  if (typeof header !== 'string') {
+    return defaultContentType
+  }
+
+  let index = header.indexOf(';')
+  const type = index !== -1
+    ? header.slice(0, index).trim()
+    : header.trim()
+
+  if (mediaTypeRE.test(type) === false) {
+    return defaultContentType
+  }
+
+  const result = {
+    type: type.toLowerCase(),
+    parameters: new NullObject()
+  }
+
+  // parse parameters
+  if (index === -1) {
+    return result
+  }
+
+  let key
+  let match
+  let value
+
+  paramRE.lastIndex = index
+
+  while ((match = paramRE.exec(header))) {
+    if (match.index !== index) {
+      return defaultContentType
+    }
+
+    index += match[0].length
+    key = match[1].toLowerCase()
+    value = match[2]
+
+    if (value[0] === '"') {
+      // remove quotes and escapes
+      value = value
+        .slice(1, value.length - 1)
+
+      quotedPairRE.test(value) && (value = value.replace(quotedPairRE, '$1'))
+    }
+
+    result.parameters[key] = value
+  }
+
+  if (index !== header.length) {
+    return defaultContentType
+  }
+
+  return result
+}
+
+__webpack_unused_export__ = { parse, safeParse }
+__webpack_unused_export__ = parse
+module.exports.xL = safeParse
+__webpack_unused_export__ = defaultContentType
+
+
+/***/ }),
+
 /***/ 1072:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
@@ -32804,7 +32998,7 @@ var createTokenAuth = function createTokenAuth2(token) {
 
 /***/ }),
 
-/***/ 4377:
+/***/ 7006:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
 "use strict";
@@ -32816,7 +33010,7 @@ __nccwpck_require__.d(__webpack_exports__, {
   Octokit: () => (/* binding */ dist_src_Octokit)
 });
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/universal-user-agent/index.js
+;// CONCATENATED MODULE: ./node_modules/universal-user-agent/index.js
 function getUserAgent() {
   if (typeof navigator === "object" && "userAgent" in navigator) {
     return navigator.userAgent;
@@ -32831,7 +33025,7 @@ function getUserAgent() {
   return "<environment undetectable>";
 }
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/before-after-hook/lib/register.js
+;// CONCATENATED MODULE: ./node_modules/before-after-hook/lib/register.js
 // @ts-check
 
 function register(state, name, method, options) {
@@ -32860,7 +33054,7 @@ function register(state, name, method, options) {
   });
 }
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/before-after-hook/lib/add.js
+;// CONCATENATED MODULE: ./node_modules/before-after-hook/lib/add.js
 // @ts-check
 
 function addHook(state, kind, name, hook) {
@@ -32908,7 +33102,7 @@ function addHook(state, kind, name, hook) {
   });
 }
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/before-after-hook/lib/remove.js
+;// CONCATENATED MODULE: ./node_modules/before-after-hook/lib/remove.js
 // @ts-check
 
 function removeHook(state, name, method) {
@@ -32929,7 +33123,7 @@ function removeHook(state, name, method) {
   state.registry[name].splice(index, 1);
 }
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/before-after-hook/index.js
+;// CONCATENATED MODULE: ./node_modules/before-after-hook/index.js
 // @ts-check
 
 
@@ -32976,7 +33170,7 @@ function Collection() {
 
 /* harmony default export */ const before_after_hook = ({ Singular, Collection });
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/endpoint/dist-bundle/index.js
+;// CONCATENATED MODULE: ./node_modules/@octokit/endpoint/dist-bundle/index.js
 // pkg/dist-src/defaults.js
 
 
@@ -33010,13 +33204,10 @@ function lowercaseKeys(object) {
 
 // pkg/dist-src/util/is-plain-object.js
 function isPlainObject(value) {
-  if (typeof value !== "object" || value === null)
-    return false;
-  if (Object.prototype.toString.call(value) !== "[object Object]")
-    return false;
+  if (typeof value !== "object" || value === null) return false;
+  if (Object.prototype.toString.call(value) !== "[object Object]") return false;
   const proto = Object.getPrototypeOf(value);
-  if (proto === null)
-    return true;
+  if (proto === null) return true;
   const Ctor = Object.prototype.hasOwnProperty.call(proto, "constructor") && proto.constructor;
   return typeof Ctor === "function" && Ctor instanceof Ctor && Function.prototype.call(Ctor) === Function.prototype.call(value);
 }
@@ -33026,10 +33217,8 @@ function mergeDeep(defaults, options) {
   const result = Object.assign({}, defaults);
   Object.keys(options).forEach((key) => {
     if (isPlainObject(options[key])) {
-      if (!(key in defaults))
-        Object.assign(result, { [key]: options[key] });
-      else
-        result[key] = mergeDeep(defaults[key], options[key]);
+      if (!(key in defaults)) Object.assign(result, { [key]: options[key] });
+      else result[key] = mergeDeep(defaults[key], options[key]);
     } else {
       Object.assign(result, { [key]: options[key] });
     }
@@ -33086,9 +33275,9 @@ function addQueryParameters(url, parameters) {
 }
 
 // pkg/dist-src/util/extract-url-variable-names.js
-var urlVariableRegex = /\{[^}]+\}/g;
+var urlVariableRegex = /\{[^{}}]+\}/g;
 function removeNonChars(variableName) {
-  return variableName.replace(/^\W+|\W+$/g, "").split(/,/);
+  return variableName.replace(/(?:^\W+)|(?:(?<!\W)\W+$)/g, "").split(/,/);
 }
 function extractUrlVariableNames(url) {
   const matches = url.match(urlVariableRegex);
@@ -33274,7 +33463,7 @@ function parse(options) {
     }
     if (url.endsWith("/graphql")) {
       if (options.mediaType.previews?.length) {
-        const previewsFromAcceptHeader = headers.accept.match(/[\w-]+(?=-preview)/g) || [];
+        const previewsFromAcceptHeader = headers.accept.match(/(?<![\w-])[\w-]+(?=-preview)/g) || [];
         headers.accept = previewsFromAcceptHeader.concat(options.mediaType.previews).map((preview) => {
           const format = options.mediaType.format ? `.${options.mediaType.format}` : "+json";
           return `application/vnd.github.${preview}-preview${format}`;
@@ -33327,7 +33516,9 @@ function withDefaults(oldDefaults, newDefaults) {
 var endpoint = withDefaults(null, DEFAULTS);
 
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/request-error/dist-src/index.js
+// EXTERNAL MODULE: ./node_modules/fast-content-type-parse/index.js
+var fast_content_type_parse = __nccwpck_require__(1120);
+;// CONCATENATED MODULE: ./node_modules/@octokit/request-error/dist-src/index.js
 class RequestError extends Error {
   name;
   /**
@@ -33356,7 +33547,7 @@ class RequestError extends Error {
     if (options.request.headers.authorization) {
       requestCopy.headers = Object.assign({}, options.request.headers, {
         authorization: options.request.headers.authorization.replace(
-          / .*$/,
+          /(?<! ) .*$/,
           " [REDACTED]"
         )
       });
@@ -33367,7 +33558,7 @@ class RequestError extends Error {
 }
 
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/request/dist-bundle/index.js
+;// CONCATENATED MODULE: ./node_modules/@octokit/request/dist-bundle/index.js
 // pkg/dist-src/index.js
 
 
@@ -33383,6 +33574,9 @@ var defaults_default = {
     "user-agent": `octokit-request.js/${dist_bundle_VERSION} ${getUserAgent()}`
   }
 };
+
+// pkg/dist-src/fetch-wrapper.js
+
 
 // pkg/dist-src/is-plain-object.js
 function dist_bundle_isPlainObject(value) {
@@ -33459,7 +33653,7 @@ async function fetchWrapper(requestOptions) {
     data: ""
   };
   if ("deprecation" in responseHeaders) {
-    const matches = responseHeaders.link && responseHeaders.link.match(/<([^>]+)>; rel="deprecation"/);
+    const matches = responseHeaders.link && responseHeaders.link.match(/<([^<>]+)>; rel="deprecation"/);
     const deprecationLink = matches && matches.pop();
     log.warn(
       `[@octokit/request] "${requestOptions.method} ${requestOptions.url}" is deprecated. It is scheduled to be removed on ${responseHeaders.sunset}${deprecationLink ? `. See ${deprecationLink}` : ""}`
@@ -33496,13 +33690,26 @@ async function fetchWrapper(requestOptions) {
 }
 async function getResponseData(response) {
   const contentType = response.headers.get("content-type");
-  if (/application\/json/.test(contentType)) {
-    return response.json().catch(() => response.text()).catch(() => "");
+  if (!contentType) {
+    return response.text().catch(() => "");
   }
-  if (!contentType || /^text\/|charset=utf-8$/.test(contentType)) {
-    return response.text();
+  const mimetype = (0,fast_content_type_parse/* safeParse */.xL)(contentType);
+  if (isJSONResponse(mimetype)) {
+    let text = "";
+    try {
+      text = await response.text();
+      return JSON.parse(text);
+    } catch (err) {
+      return text;
+    }
+  } else if (mimetype.type.startsWith("text/") || mimetype.parameters.charset?.toLowerCase() === "utf-8") {
+    return response.text().catch(() => "");
+  } else {
+    return response.arrayBuffer().catch(() => new ArrayBuffer(0));
   }
-  return response.arrayBuffer();
+}
+function isJSONResponse(mimetype) {
+  return mimetype.type === "application/json" || mimetype.type === "application/scim+json";
 }
 function toErrorMessage(data) {
   if (typeof data === "string") {
@@ -33547,7 +33754,7 @@ function dist_bundle_withDefaults(oldEndpoint, newDefaults) {
 var request = dist_bundle_withDefaults(endpoint, defaults_default);
 
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/graphql/dist-bundle/index.js
+;// CONCATENATED MODULE: ./node_modules/@octokit/graphql/dist-bundle/index.js
 // pkg/dist-src/index.js
 
 
@@ -33591,7 +33798,8 @@ var NON_VARIABLE_OPTIONS = [
   "headers",
   "request",
   "query",
-  "mediaType"
+  "mediaType",
+  "operationName"
 ];
 var FORBIDDEN_VARIABLE_OPTIONS = ["query", "method", "url"];
 var GHES_V3_SUFFIX_REGEX = /\/api\/v3\/?$/;
@@ -33603,8 +33811,7 @@ function graphql(request2, query, options) {
       );
     }
     for (const key in options) {
-      if (!FORBIDDEN_VARIABLE_OPTIONS.includes(key))
-        continue;
+      if (!FORBIDDEN_VARIABLE_OPTIONS.includes(key)) continue;
       return Promise.reject(
         new Error(
           `[@octokit/graphql] "${key}" cannot be used as variable name`
@@ -33676,11 +33883,11 @@ function withCustomRequest(customRequest) {
 
 // EXTERNAL MODULE: ./node_modules/@octokit/auth-token/dist-bundle/index.js
 var dist_bundle = __nccwpck_require__(9313);
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/core/dist-src/version.js
-const version_VERSION = "6.1.2";
+;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/version.js
+const version_VERSION = "6.1.4";
 
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/core/dist-src/index.js
+;// CONCATENATED MODULE: ./node_modules/@octokit/core/dist-src/index.js
 
 
 
@@ -33844,7 +34051,7 @@ function requestLog(octokit) {
 requestLog.VERSION = dist_src_version_VERSION;
 
 
-;// CONCATENATED MODULE: ./node_modules/@octokit/rest/node_modules/@octokit/plugin-paginate-rest/dist-bundle/index.js
+;// CONCATENATED MODULE: ./node_modules/@octokit/plugin-paginate-rest/dist-bundle/index.js
 // pkg/dist-src/version.js
 var plugin_paginate_rest_dist_bundle_VERSION = "0.0.0-development";
 
@@ -33892,7 +34099,7 @@ function iterator(octokit, route, parameters) {
           const response = await requestMethod({ method, url, headers });
           const normalizedResponse = normalizePaginatedListResponse(response);
           url = ((normalizedResponse.headers.link || "").match(
-            /<([^>]+)>;\s*rel="next"/
+            /<([^<>]+)>;\s*rel="next"/
           ) || [])[1];
           return { value: normalizedResponse };
         } catch (error) {
@@ -33957,7 +34164,8 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /assignments/{assignment_id}/accepted_assignments",
   "GET /classrooms",
   "GET /classrooms/{classroom_id}/assignments",
-  "GET /enterprises/{enterprise}/copilot/usage",
+  "GET /enterprises/{enterprise}/code-security/configurations",
+  "GET /enterprises/{enterprise}/code-security/configurations/{configuration_id}/repositories",
   "GET /enterprises/{enterprise}/dependabot/alerts",
   "GET /enterprises/{enterprise}/secret-scanning/alerts",
   "GET /events",
@@ -33979,17 +34187,24 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /organizations",
   "GET /orgs/{org}/actions/cache/usage-by-repository",
   "GET /orgs/{org}/actions/permissions/repositories",
+  "GET /orgs/{org}/actions/runner-groups",
+  "GET /orgs/{org}/actions/runner-groups/{runner_group_id}/repositories",
+  "GET /orgs/{org}/actions/runner-groups/{runner_group_id}/runners",
   "GET /orgs/{org}/actions/runners",
   "GET /orgs/{org}/actions/secrets",
   "GET /orgs/{org}/actions/secrets/{secret_name}/repositories",
   "GET /orgs/{org}/actions/variables",
   "GET /orgs/{org}/actions/variables/{name}/repositories",
+  "GET /orgs/{org}/attestations/{subject_digest}",
   "GET /orgs/{org}/blocks",
   "GET /orgs/{org}/code-scanning/alerts",
+  "GET /orgs/{org}/code-security/configurations",
+  "GET /orgs/{org}/code-security/configurations/{configuration_id}/repositories",
   "GET /orgs/{org}/codespaces",
   "GET /orgs/{org}/codespaces/secrets",
   "GET /orgs/{org}/codespaces/secrets/{secret_name}/repositories",
   "GET /orgs/{org}/copilot/billing/seats",
+  "GET /orgs/{org}/copilot/metrics",
   "GET /orgs/{org}/copilot/usage",
   "GET /orgs/{org}/dependabot/alerts",
   "GET /orgs/{org}/dependabot/secrets",
@@ -33998,6 +34213,9 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /orgs/{org}/failed_invitations",
   "GET /orgs/{org}/hooks",
   "GET /orgs/{org}/hooks/{hook_id}/deliveries",
+  "GET /orgs/{org}/insights/api/route-stats/{actor_type}/{actor_id}",
+  "GET /orgs/{org}/insights/api/subject-stats",
+  "GET /orgs/{org}/insights/api/user-stats/{user_id}",
   "GET /orgs/{org}/installations",
   "GET /orgs/{org}/invitations",
   "GET /orgs/{org}/invitations/{invitation_id}/teams",
@@ -34015,6 +34233,7 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /orgs/{org}/personal-access-token-requests/{pat_request_id}/repositories",
   "GET /orgs/{org}/personal-access-tokens",
   "GET /orgs/{org}/personal-access-tokens/{pat_id}/repositories",
+  "GET /orgs/{org}/private-registries",
   "GET /orgs/{org}/projects",
   "GET /orgs/{org}/properties/values",
   "GET /orgs/{org}/public_members",
@@ -34023,6 +34242,7 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /orgs/{org}/rulesets/rule-suites",
   "GET /orgs/{org}/secret-scanning/alerts",
   "GET /orgs/{org}/security-advisories",
+  "GET /orgs/{org}/team/{team_slug}/copilot/metrics",
   "GET /orgs/{org}/team/{team_slug}/copilot/usage",
   "GET /orgs/{org}/teams",
   "GET /orgs/{org}/teams/{team_slug}/discussions",
@@ -34052,6 +34272,7 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
   "GET /repos/{owner}/{repo}/activity",
   "GET /repos/{owner}/{repo}/assignees",
+  "GET /repos/{owner}/{repo}/attestations/{subject_digest}",
   "GET /repos/{owner}/{repo}/branches",
   "GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations",
   "GET /repos/{owner}/{repo}/check-suites/{check_suite_id}/check-runs",
@@ -34094,6 +34315,7 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /repos/{owner}/{repo}/issues/{issue_number}/events",
   "GET /repos/{owner}/{repo}/issues/{issue_number}/labels",
   "GET /repos/{owner}/{repo}/issues/{issue_number}/reactions",
+  "GET /repos/{owner}/{repo}/issues/{issue_number}/sub_issues",
   "GET /repos/{owner}/{repo}/issues/{issue_number}/timeline",
   "GET /repos/{owner}/{repo}/keys",
   "GET /repos/{owner}/{repo}/labels",
@@ -34169,6 +34391,7 @@ var paginatingEndpoints = (/* unused pure expression or super */ null && ([
   "GET /user/subscriptions",
   "GET /user/teams",
   "GET /users",
+  "GET /users/{username}/attestations/{subject_digest}",
   "GET /users/{username}/events",
   "GET /users/{username}/events/orgs/{org}",
   "GET /users/{username}/events/public",
@@ -36393,7 +36616,7 @@ const dist_src_Octokit = Octokit.plugin(requestLog, legacyRestEndpointMethods, p
 var __webpack_exports__ = {};
 const core = __nccwpck_require__(7484);
 const tc = __nccwpck_require__(3472);
-const { Octokit } = __nccwpck_require__(4377);
+const { Octokit } = __nccwpck_require__(7006);
 const {createActionAuth} = __nccwpck_require__(1072);
 const semver = __nccwpck_require__(2088);
 const { platform } = __nccwpck_require__(932);
@@ -36423,7 +36646,7 @@ async function setup() {
 }
 
 async function downloadBin(bin) {
-  let interfaceName = bin == 'fastly' ? 'cli' : bin
+  let interfaceName = bin == 'fastly' ? 'cli' : bin;
   let binVersion = core.getInput(`${interfaceName}_version`);
 
   // Normalize version string
@@ -36469,7 +36692,12 @@ async function downloadBin(bin) {
   }
 
   let os = platform;
-  let nameSuffix = `_${os}-amd64.tar.gz`;
+  let arch = process.arch;
+  // translate arch to release asset arch
+  if (arch === 'x64') {
+    arch = 'amd64';
+  }
+  let nameSuffix = `_${os}-${arch}.tar.gz`;
   if (os === 'win32') {
     nameSuffix = '_windows-amd64.tar.gz';
   }

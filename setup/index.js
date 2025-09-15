@@ -30,7 +30,7 @@ async function setup() {
 }
 
 async function downloadBin(bin) {
-  let interfaceName = bin == 'fastly' ? 'cli' : bin
+  let interfaceName = bin == 'fastly' ? 'cli' : bin;
   let binVersion = core.getInput(`${interfaceName}_version`);
 
   // Normalize version string
@@ -76,7 +76,12 @@ async function downloadBin(bin) {
   }
 
   let os = platform;
-  let nameSuffix = `_${os}-amd64.tar.gz`;
+  let arch = process.arch;
+  // translate arch to release asset arch
+  if (arch === 'x64') {
+    arch = 'amd64';
+  }
+  let nameSuffix = `_${os}-${arch}.tar.gz`;
   if (os === 'win32') {
     nameSuffix = '_windows-amd64.tar.gz';
   }
