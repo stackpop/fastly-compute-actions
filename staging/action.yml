@@ -12,8 +12,9 @@ inputs:
     required: false
     default: './'
   service_id:
-    description: 'The Fastly service ID to stage to.'
-    required: true
+    description: 'The Fastly service ID to stage to. Defaults to the value in fastly.toml.'
+    required: false
+    default: ''
   comment:
     description: 'An optional comment to be included with the staged service version.'
     required: false
@@ -34,7 +35,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Fastly CLI
-      uses: stackpop/fastly-compute-actions/setup@main
+      uses: fastly/compute-actions/setup@main
       with:
         token: ${{ inputs.token }}
         cli_version: ${{ inputs.cli_version }}
@@ -49,7 +50,11 @@ runs:
       env:
         FASTLY_API_TOKEN: ${{ env.FASTLY_API_TOKEN }}
       run: |
-        OUTPUT=$(fastly compute update --autoclone --service-id="${{ inputs.service_id }}" --version=active 2>&1 | tee /dev/stderr)
+        ARGS="--autoclone --version=active"
+        if [ -n "${{ inputs.service_id }}" ]; then
+          ARGS="$ARGS --service-id=${{ inputs.service_id }}"
+        fi
+        OUTPUT=$(fastly compute update $ARGS 2>&1 | tee /dev/stderr)
         VERSION=$(echo "$OUTPUT" | grep -oE 'version [0-9]+' | grep -oE '[0-9]+')
         if [ -z "$VERSION" ]; then
           echo "::error::Failed to extract version number from fastly compute update output"
@@ -65,18 +70,23 @@ runs:
       env:
         FASTLY_API_TOKEN: ${{ env.FASTLY_API_TOKEN }}
       run: |
-        fastly service-version update \
-          --version=${{ steps.upload-draft.outputs.version }} \
-          --service-id="${{ inputs.service_id }}" \
-          --comment="${{ inputs.comment }}"
+        ARGS="--version=${{ steps.upload-draft.outputs.version }} --comment=${{ inputs.comment }}"
+        if [ -n "${{ inputs.service_id }}" ]; then
+          ARGS="$ARGS --service-id=${{ inputs.service_id }}"
+        fi
+        fastly service-version update $ARGS
       shell: bash
+      working-directory: ${{ inputs.project_directory }}
 
     - name: Stage draft version
       env:
         FASTLY_API_TOKEN: ${{ env.FASTLY_API_TOKEN }}
       run: |
-        fastly service-version stage \
-          --version=${{ steps.upload-draft.outputs.version }} \
-          --service-id="${{ inputs.service_id }}"
+        ARGS="--version=${{ steps.upload-draft.outputs.version }}"
+        if [ -n "${{ inputs.service_id }}" ]; then
+          ARGS="$ARGS --service-id=${{ inputs.service_id }}"
+        fi
+        fastly service-version stage $ARGS
         echo "Successfully staged version ${{ steps.upload-draft.outputs.version }}"
       shell: bash
+      working-directory: ${{ inputs.project_directory }}
